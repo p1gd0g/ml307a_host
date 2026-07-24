@@ -69,6 +69,39 @@ function renderState(state) {
   renderMessages(state.messages);
   if (state.webhook_url) $("in-webhook").value = state.webhook_url;
   if (state.serial_port) $("in-port").value = state.serial_port;
+  renderParams(state.webhook_params || {});
+}
+
+function renderParams(params) {
+  const list = $("param-list");
+  list.innerHTML = "";
+  const entries = Object.entries(params);
+  if (entries.length === 0) addParamRow("", "");
+  else for (const [k, v] of entries) addParamRow(k, v);
+}
+
+function addParamRow(key, val) {
+  const list = $("param-list");
+  const row = document.createElement("div");
+  row.className = "param-row";
+  row.innerHTML =
+    '<input type="text" class="pk" placeholder="参数名" />' +
+    '<input type="text" class="pv" placeholder="参数值" />' +
+    '<button type="button" class="param-del">×</button>';
+  row.querySelector(".pk").value = key || "";
+  row.querySelector(".pv").value = val == null ? "" : val;
+  row.querySelector(".param-del").onclick = () => row.remove();
+  list.appendChild(row);
+}
+
+function collectParams() {
+  const params = {};
+  document.querySelectorAll("#param-list .param-row").forEach((row) => {
+    const k = row.querySelector(".pk").value.trim();
+    const v = row.querySelector(".pv").value;
+    if (k) params[k] = v;
+  });
+  return params;
 }
 
 async function loadState() {
@@ -123,6 +156,7 @@ $("btn-save").onclick = async () => {
   const payload = {
     serial_port: $("in-port").value.trim(),
     webhook_url: $("in-webhook").value.trim(),
+    webhook_params: collectParams(),
   };
   try {
     const r = await fetch("/api/config", {
@@ -147,12 +181,14 @@ $("btn-test").onclick = async () => {
     const r = await fetch("/api/webhook/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ webhook_url: url }),
+      body: JSON.stringify({ webhook_url: url, webhook_params: collectParams() }),
     });
     const d = await r.json();
     $("cfg-msg").textContent = d.ok ? "已发送测试 GET 请求，请查看接收端。" : "测试失败: " + d.error;
   } catch (e) { $("cfg-msg").textContent = "请求失败"; }
 };
+
+$("btn-add-param").onclick = () => addParamRow("", "");
 
 $("btn-clear").onclick = async () => {
   try {

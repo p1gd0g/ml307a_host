@@ -78,15 +78,21 @@ sudo systemctl status ml307_host
 
 ## Webhook 行为
 
-收到短信时，后端向 `webhook_url` 发起 GET 请求，并附带参数：
+收到短信时，后端向 `webhook_url` 发起 GET 请求。
+
+所有短信信息合并到一个 `text` 参数中：
 
 ```
-?from=<发送号码>&content=<短信内容>&time=<短信时间>
+text=发件人:13800138000 时间:24/07/24,10:00:00+32 内容:hello
 ```
 
-例如：`http://example.com/hook?from=13800138000&content=hello&time=24/07/24,10:00:00+32`
+此外可在前端「自定义参数」中添加任意键值对，它们会作为额外查询参数一并发送。例如配置 `token=abc` 后请求形如：
 
-可在前端点击「测试 Webhook」验证接收端是否正常。
+```
+http://example.com/hook?text=...&token=abc
+```
+
+`text` 由系统自动生成、不可被自定义参数覆盖。可在前端点击「测试 Webhook」验证接收端是否正常。
 
 ## 拨号状态判断逻辑
 

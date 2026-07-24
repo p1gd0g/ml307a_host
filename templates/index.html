@@ -58,6 +58,15 @@
     .conn-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
     .dot-on { background: var(--ok); } .dot-off { background: var(--bad); }
     .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .hint code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; }
+    .param-row { display: flex; gap: 8px; margin-top: 8px; }
+    .param-row input { margin-bottom: 0; }
+    .param-row .pk { flex: 1; }
+    .param-row .pv { flex: 1; }
+    .param-del {
+      background: var(--panel2); color: var(--bad); border: none; border-radius: 8px;
+      cursor: pointer; padding: 0 12px; font-size: 16px; line-height: 1;
+    }
   </style>
 </head>
 <body>
@@ -120,7 +129,14 @@
         <h2>Webhook 配置（收到短信时执行 GET）</h2>
         <input type="text" id="in-port" placeholder="串口端口，如 /dev/ttyUSB2" />
         <input type="text" id="in-webhook" placeholder="Webhook 地址，如 http://example.com/hook" />
-        <div class="hint">短信到达时将以 GET 方式请求该地址，并附带参数 ?from=号码&content=内容&time=时间</div>
+        <div class="hint">短信到达时将以 GET 方式请求该地址，并附带参数 <code>text=发件人/时间/内容</code> 以及下方自定义参数。</div>
+        <div style="margin-top:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="label">自定义参数</span>
+            <button class="btn ghost" id="btn-add-param" style="margin:0;padding:5px 10px;">+ 添加参数</button>
+          </div>
+          <div id="param-list"></div>
+        </div>
         <div style="margin-top:12px;">
           <button class="btn" id="btn-save">保存配置</button>
           <button class="btn ghost" id="btn-test">测试 Webhook</button>

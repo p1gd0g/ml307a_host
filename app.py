@@ -30,6 +30,7 @@ logger = logging.getLogger("ml307_host")
 device = ml307.ML307ADevice(CONFIG["serial_port"], CONFIG.get("baud_rate", 115200))
 device.status_interval = CONFIG.get("status_interval", 5)
 device.webhook_url = CONFIG.get("webhook_url", "")
+device.webhook_params = CONFIG.get("webhook_params", {})
 
 main_loop = None
 templates = Jinja2Templates(directory=os.path.join(BASE, "templates"))
@@ -64,6 +65,7 @@ def device_state():
             "status": dict(device.status),
             "messages": list(device.messages),
             "webhook_url": device.webhook_url,
+            "webhook_params": device.webhook_params,
             "serial_port": device.port,
         }
 
@@ -137,10 +139,15 @@ async def update_config(request: Request):
     new_port = data.get("serial_port")
     new_baud = data.get("baud_rate")
     webhook = data.get("webhook_url")
+    webhook_params = data.get("webhook_params")
 
     if webhook is not None:
         device.webhook_url = webhook
         CONFIG["webhook_url"] = webhook
+
+    if webhook_params is not None and isinstance(webhook_params, dict):
+        device.webhook_params = webhook_params
+        CONFIG["webhook_params"] = webhook_params
 
     if new_port and new_port != device.port:
         CONFIG["serial_port"] = new_port
@@ -178,15 +185,27 @@ async def clear_messages():
 async def test_webhook(request: Request):
     data = await request.json()
     url = data.get("webhook_url") or device.webhook_url
+    params = data.get("webhook_params")
+    if params is not None and isinstance(params, dict):
+        device.webhook_params = params
+        CONFIG["webhook_params"] = params
+        cfg.save_config(CONFIG, CONFIG_PATH)
     if not url:
         return {"ok": False, "error": "未配置 webhook"}
     import threading
     device.webhook_url = url
 
+    test_msg = {
+        "sender": "13800138000",
+        "content": "测试短信",
+        "timestamp": "",
+    }
+
     def do():
         try:
             import requests
-            r = requests.get(url, params={"from": "TEST", "content": "测试短信", "time": ""}, timeout=10)
+            p = device._build_params(test_msg)
+            r = requests.get(url, params=p, timeout=10)
             logger.info("webhook 测试 %s -> %s", url, r.status_code)
         except Exception as e:
             logger.error("webhook 测试失败: %s", e)

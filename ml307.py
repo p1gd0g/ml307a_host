@@ -30,6 +30,7 @@ class ML307ADevice:
         self.lock = threading.Lock()
         self.status_interval = 5
         self.webhook_url = ""
+        self.webhook_params = {}  # 自定义 webhook 参数（dict）
         self.on_message = None  # 业务层回调：收到短信时调用(msg)
 
         self.status = {
@@ -207,15 +208,25 @@ class ML307ADevice:
                 pass
 
     # ---------- Webhook ----------
+    def _build_text(self, msg):
+        """将所有短信信息合并为一个文本参数。"""
+        return "发件人:%s 时间:%s 内容:%s" % (
+            msg.get("sender", ""), msg.get("timestamp", ""), msg.get("content", "")
+        )
+
+    def _build_params(self, msg):
+        params = {"text": self._build_text(msg)}
+        if isinstance(self.webhook_params, dict):
+            for k, v in self.webhook_params.items():
+                if k and k != "text":  # text 由系统生成，不被覆盖
+                    params[str(k)] = v
+        return params
+
     def _trigger_webhook(self, msg):
         url = self.webhook_url
         if not url:
             return
-        params = {
-            "from": msg["sender"],
-            "content": msg["content"],
-            "time": msg["timestamp"],
-        }
+        params = self._build_params(msg)
         threading.Thread(target=self._do_get, args=(url, params), daemon=True).start()
 
     def _do_get(self, url, params):
