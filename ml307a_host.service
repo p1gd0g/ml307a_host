@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/ml307_host
-ExecStart=/opt/ml307_host/venv/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8000
+WorkingDirectory=/opt/ml307a_host
+ExecStart=/opt/ml307a_host/venv/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3
 User=root

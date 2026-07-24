@@ -15,13 +15,13 @@
 ## 目录结构
 
 ```
-ml307_host/
+ml307a_host/
 ├── app.py               # FastAPI 后端（REST + WebSocket）
-├── ml307.py             # ML307A 串口/AT 指令驱动
+├── ml307a.py            # ML307A 串口/AT 指令驱动
 ├── config.py            # 配置加载/保存
 ├── config.json          # 运行时配置（端口 / webhook / 轮询间隔）
 ├── requirements.txt
-├── ml307_host.service   # systemd 服务单元
+├── ml307a_host.service  # systemd 服务单元
 ├── templates/index.html # 前端页面
 └── static/app.js        # 前端逻辑
 ```
@@ -43,7 +43,7 @@ sudo usermod -aG dialout $USER      # 当前用户加入 dialout 组
 ## 安装与运行
 
 ```bash
-cd /opt/ml307_host
+cd /opt/ml307a_host
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -57,13 +57,13 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8000
 ## 开机自启（systemd）
 
 ```bash
-sudo cp ml307_host.service /etc/systemd/system/
+sudo cp ml307a_host.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now ml307_host
-sudo systemctl status ml307_host
+sudo systemctl enable --now ml307a_host
+sudo systemctl status ml307a_host
 ```
 
-> 服务文件默认使用 `/opt/ml307_host/venv/bin/python` 与 `root` 用户，请按实际路径修改。
+> 服务文件默认使用 `/opt/ml307a_host/venv/bin/python` 与 `root` 用户，请按实际路径修改。
 
 ## API 说明
 

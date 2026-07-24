@@ -13,7 +13,7 @@ import time
 
 import serial
 
-logger = logging.getLogger("ml307")
+logger = logging.getLogger("ml307a")
 
 
 class ML307AError(Exception):

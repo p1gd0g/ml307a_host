@@ -12,7 +12,7 @@ import logging
 import os
 
 import config as cfg
-import ml307
+import ml307a
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -25,9 +25,9 @@ CONFIG_PATH = os.path.join(BASE, "config.json")
 CONFIG = cfg.load_config(CONFIG_PATH)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ml307_host")
+logger = logging.getLogger("ml307a_host")
 
-device = ml307.ML307ADevice(CONFIG["serial_port"], CONFIG.get("baud_rate", 115200))
+device = ml307a.ML307ADevice(CONFIG["serial_port"], CONFIG.get("baud_rate", 115200))
 device.status_interval = CONFIG.get("status_interval", 5)
 device.webhook_url = CONFIG.get("webhook_url", "")
 device.webhook_params = CONFIG.get("webhook_params", {})
