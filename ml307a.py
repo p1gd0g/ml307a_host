@@ -210,7 +210,7 @@ class ML307ADevice:
     # ---------- Webhook ----------
     def _build_text(self, msg):
         """将所有短信信息合并为一个文本参数。"""
-        return "发件人:%s 时间:%s 内容:%s" % (
+        return "sender:%s time:%s content:%s" % (
             msg.get("sender", ""), msg.get("timestamp", ""), msg.get("content", "")
         )
 
