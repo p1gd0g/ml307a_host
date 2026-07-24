@@ -1,0 +1,8 @@
+{
+  "serial_port": "/dev/ttyUSB2",
+  "baud_rate": 115200,
+  "webhook_url": "",
+  "status_interval": 5,
+  "host": "0.0.0.0",
+  "port": 8000
+}

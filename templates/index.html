@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ML307A 4G 模块监控</title>
+  <style>
+    :root {
+      --bg: #0f1220; --panel: #1a1f33; --panel2: #232a44;
+      --text: #e6e9f5; --muted: #8b93b0; --accent: #4f8cff;
+      --ok: #36d399; --bad: #f87272; --warn: #fbbd23;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    header {
+      padding: 18px 24px; border-bottom: 1px solid #2a3150;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { font-size: 18px; margin: 0; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    .panel {
+      background: var(--panel); border-radius: 14px; padding: 18px 20px;
+      border: 1px solid #2a3150;
+    }
+    .panel h2 { font-size: 14px; margin: 0 0 14px; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+    .row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed #2a3150; }
+    .row:last-child { border-bottom: none; }
+    .label { color: var(--muted); font-size: 13px; }
+    .value { font-size: 14px; font-weight: 600; }
+    .badge { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .b-ok { background: rgba(54,211,153,.15); color: var(--ok); }
+    .b-bad { background: rgba(248,114,114,.15); color: var(--bad); }
+    .b-warn { background: rgba(251,189,35,.15); color: var(--warn); }
+    .signal { display: inline-flex; gap: 3px; align-items: flex-end; height: 18px; }
+    .signal span { width: 5px; background: #3a4268; border-radius: 1px; }
+    .signal span.on { background: var(--accent); }
+    .bars-1 { height: 5px; } .bars-2 { height: 9px; } .bars-3 { height: 13px; } .bars-4 { height: 17px; }
+    input[type=text] {
+      width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid #2a3150;
+      background: var(--panel2); color: var(--text); font-size: 14px; margin-bottom: 10px;
+    }
+    .btn {
+      background: var(--accent); color: #fff; border: none; padding: 9px 16px;
+      border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; margin-right: 8px;
+    }
+    .btn.ghost { background: var(--panel2); color: var(--text); }
+    .btn:hover { opacity: .9; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #2a3150; }
+    th { color: var(--muted); font-weight: 600; }
+    .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+    .msg-content { white-space: pre-wrap; word-break: break-all; max-width: 420px; }
+    .conn-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .dot-on { background: var(--ok); } .dot-off { background: var(--bad); }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ML307A 4G 模块监控台</h1>
+    <div style="display:flex;align-items:center;">
+      <span id="live-dot" class="conn-dot dot-off"></span>
+      <span id="live-text" class="label">连接中…</span>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="grid">
+      <!-- 拨号状态 -->
+      <div class="panel">
+        <h2>拨号状态</h2>
+        <div class="row">
+          <span class="label">模块连接</span>
+          <span id="st-connected" class="value badge b-warn">未知</span>
+        </div>
+        <div class="row">
+          <span class="label">SIM 卡</span>
+          <span id="st-sim" class="value badge b-warn">未知</span>
+        </div>
+        <div class="row">
+          <span class="label">网络注册</span>
+          <span id="st-reg" class="value badge b-warn">未知</span>
+        </div>
+        <div class="row">
+          <span class="label">拨号结果</span>
+          <span id="st-dial" class="value badge b-warn">未知</span>
+        </div>
+        <div class="row">
+          <span class="label">IP 地址</span>
+          <span id="st-ip" class="value">—</span>
+        </div>
+        <div class="row">
+          <span class="label">运营商</span>
+          <span id="st-ops" class="value">—</span>
+        </div>
+        <div class="row">
+          <span class="label">信号强度</span>
+          <span id="st-signal" class="value">—</span>
+        </div>
+        <div class="row">
+          <span class="label">最后更新</span>
+          <span id="st-update" class="value">—</span>
+        </div>
+        <div class="row">
+          <span class="label">错误信息</span>
+          <span id="st-error" class="value" style="color:var(--bad)">—</span>
+        </div>
+        <div style="margin-top:14px;">
+          <button class="btn" id="btn-dial">重新拨号</button>
+        </div>
+      </div>
+
+      <!-- Webhook 配置 -->
+      <div class="panel">
+        <h2>Webhook 配置（收到短信时执行 GET）</h2>
+        <input type="text" id="in-port" placeholder="串口端口，如 /dev/ttyUSB2" />
+        <input type="text" id="in-webhook" placeholder="Webhook 地址，如 http://example.com/hook" />
+        <div class="hint">短信到达时将以 GET 方式请求该地址，并附带参数 ?from=号码&content=内容&time=时间</div>
+        <div style="margin-top:12px;">
+          <button class="btn" id="btn-save">保存配置</button>
+          <button class="btn ghost" id="btn-test">测试 Webhook</button>
+        </div>
+        <div id="cfg-msg" class="hint" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- 短信列表 -->
+    <div class="panel" style="margin-top:18px;">
+      <h2>收到短信 <button class="btn ghost" id="btn-clear" style="float:right;margin-top:-6px;">清空</button></h2>
+      <table>
+        <thead>
+          <tr><th style="width:170px;">时间</th><th style="width:150px;">发送号码</th><th>内容</th></tr>
+        </thead>
+        <tbody id="msg-body"></tbody>
+      </table>
+      <div id="msg-empty" class="empty">暂无短信</div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
