@@ -215,7 +215,7 @@ class ML307ADevice:
         )
 
     def _build_params(self, msg):
-        params = {"text": self._build_text(msg)}
+        params = {"text": msg.get("content", "")}
         if isinstance(self.webhook_params, dict):
             for k, v in self.webhook_params.items():
                 if k and k != "text":  # text 由系统生成，不被覆盖
