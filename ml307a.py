@@ -6,6 +6,7 @@
 3. 收到短信时触发配置的 webhook（GET 请求）。
 """
 import datetime
+import json
 import logging
 import re
 import threading
@@ -187,7 +188,20 @@ class ML307ADevice:
         except Exception:
             pass
 
+    # ---------- 解码 ----------
+    def _decode_content(self, content):
+        """ML307A 在部分编码下会以 UCS2(UTF-16BE) 十六进制串返回短信正文，
+        这里尝试将其还原为可读文本（如 6D4B8BD5... -> 测试...）。"""
+        s = (content or "").strip()
+        if len(s) >= 4 and len(s) % 4 == 0 and re.fullmatch(r"[0-9A-Fa-f]+", s):
+            try:
+                return bytes.fromhex(s).decode("utf-16-be")
+            except Exception:
+                return content
+        return content
+
     def _store_message(self, sender, content, ts):
+        content = self._decode_content(content)
         msg = {
             "id": int(time.time() * 1000),
             "sender": sender,
@@ -209,13 +223,15 @@ class ML307ADevice:
 
     # ---------- Webhook ----------
     def _build_text(self, msg):
-        """将所有短信信息合并为一个文本参数。"""
-        return "sender:%s time:%s content:%s" % (
-            msg.get("sender", ""), msg.get("timestamp", ""), msg.get("content", "")
-        )
+        """将所有短信信息合并为一个 JSON 字符串参数。"""
+        return json.dumps({
+            "sender": msg.get("sender", ""),
+            "time": msg.get("timestamp", ""),
+            "content": msg.get("content", ""),
+        }, ensure_ascii=False)
 
     def _build_params(self, msg):
-        params = {"text": msg.get("content", "")}
+        params = {"text": self._build_text(msg)}
         if isinstance(self.webhook_params, dict):
             for k, v in self.webhook_params.items():
                 if k and k != "text":  # text 由系统生成，不被覆盖
