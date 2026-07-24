@@ -2,8 +2,15 @@
 let ws = null;
 let pollTimer = null;
 let lastMsgIds = new Set();
+let paramsDirty = false; // 用户是否已修改自定义参数但未保存
 
 const $ = (id) => document.getElementById(id);
+
+// 判断某容器（或其子元素）当前是否处于聚焦状态，用于避免覆盖正在输入的表单
+function isFocusedWithin(id) {
+  const el = $(id);
+  return !!el && el.contains(document.activeElement);
+}
 
 function badge(text, kind) {
   return `<span class="badge ${kind}">${text}</span>`;
@@ -67,9 +74,13 @@ function escapeHtml(s) {
 function renderState(state) {
   renderStatus(state.status);
   renderMessages(state.messages);
-  if (state.webhook_url) $("in-webhook").value = state.webhook_url;
-  if (state.serial_port) $("in-port").value = state.serial_port;
-  renderParams(state.webhook_params || {});
+  // 仅在用户未正在编辑时才回填表单，避免覆盖输入
+  if (state.webhook_url && !isFocusedWithin("in-webhook")) $("in-webhook").value = state.webhook_url;
+  if (state.serial_port && !isFocusedWithin("in-port")) $("in-port").value = state.serial_port;
+  // 自定义参数：未处于编辑态且用户未做未保存修改时才重建
+  if (!paramsDirty && !isFocusedWithin("param-list")) {
+    renderParams(state.webhook_params || {});
+  }
 }
 
 function renderParams(params) {
@@ -88,9 +99,14 @@ function addParamRow(key, val) {
     '<input type="text" class="pk" placeholder="参数名" />' +
     '<input type="text" class="pv" placeholder="参数值" />' +
     '<button type="button" class="param-del">×</button>';
-  row.querySelector(".pk").value = key || "";
-  row.querySelector(".pv").value = val == null ? "" : val;
-  row.querySelector(".param-del").onclick = () => row.remove();
+  const pk = row.querySelector(".pk");
+  const pv = row.querySelector(".pv");
+  pk.value = key || "";
+  pv.value = val == null ? "" : val;
+  // 用户编辑或删除参数即标记为未保存，避免被实时刷新覆盖
+  pk.addEventListener("input", () => { paramsDirty = true; });
+  pv.addEventListener("input", () => { paramsDirty = true; });
+  row.querySelector(".param-del").onclick = () => { row.remove(); paramsDirty = true; };
   list.appendChild(row);
 }
 
@@ -167,6 +183,7 @@ $("btn-save").onclick = async () => {
     const d = await r.json();
     if (d.ok) {
       $("cfg-msg").textContent = "已保存。若更改了端口，模块正在重新连接…";
+      paramsDirty = false; // 保存成功后允许参数列表随服务端刷新
       renderState(d.state);
     } else {
       $("cfg-msg").textContent = "保存失败: " + d.error;
@@ -188,7 +205,7 @@ $("btn-test").onclick = async () => {
   } catch (e) { $("cfg-msg").textContent = "请求失败"; }
 };
 
-$("btn-add-param").onclick = () => addParamRow("", "");
+$("btn-add-param").onclick = () => { addParamRow("", ""); paramsDirty = true; };
 
 $("btn-clear").onclick = async () => {
   try {
