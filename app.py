@@ -197,7 +197,7 @@ async def test_webhook(request: Request):
 
     test_msg = {
         "sender": "13800138000",
-        "content": "test",
+        "content": "测试",
         "timestamp": "",
     }
 
