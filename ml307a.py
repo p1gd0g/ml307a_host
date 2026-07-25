@@ -8,6 +8,7 @@
 import datetime
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -51,7 +52,20 @@ class ML307ADevice:
         self._last_status = 0
 
     # ---------- 连接 / 主循环 ----------
+    def _wait_for_port(self, timeout=15):
+        if os.path.exists(self.port):
+            return
+        logger.info("等待串口设备 %s 出现（最多 %ss）...", self.port, timeout)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if os.path.exists(self.port):
+                return
+            time.sleep(0.5)
+        logger.warning("串口设备 %s 在 %ss 内未出现，驱动可能未加载", self.port, timeout)
+
     def connect(self):
+        # 驱动可能刚加载、USB 枚举需要一点时间，先等待设备节点出现
+        self._wait_for_port(timeout=15)
         if self.ser and self.ser.is_open:
             self.ser.close()
         self.ser = serial.Serial(self.port, self.baud, timeout=0.5)

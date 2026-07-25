@@ -40,6 +40,23 @@ ls -l /dev/ttyUSB*
 sudo usermod -aG dialout $USER      # 当前用户加入 dialout 组
 ```
 
+### USB 串口驱动（重要）
+
+ML307A 通过 USB 接入时，内核需要 `option` 驱动识别其 VID:PID（`0x2ecc:0x3012`）才会生成 `/dev/ttyUSB*` 端口。若插入后没有 `ttyUSB*` 设备，需执行：
+
+```bash
+sudo modprobe option
+echo "0x2ecc 0x3012" | sudo tee /sys/bus/usb-serial/drivers/option1/new_id
+```
+
+项目已内置 `setup_serial.sh` 封装上述步骤，systemd 服务会在启动前自动执行（`ExecStartPre`）。手动部署/调试时也可直接运行：
+
+```bash
+sudo bash setup_serial.sh
+```
+
+> 注意：写入 `new_id` 后若仍未生成端口，可拔插一次模块让其重新枚举。
+
 ## 安装与运行
 
 ```bash

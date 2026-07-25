@@ -5,6 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/ml307a_host
+# 启动前加载 option 驱动并注册 ML307A 的 VID:PID，确保 /dev/ttyUSB* 生成
+ExecStartPre=/bin/bash /opt/ml307a_host/setup_serial.sh
 ExecStart=/opt/ml307a_host/venv/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3
