@@ -312,26 +312,33 @@ class ML307ADevice:
                 except Exception:
                     pass
 
-            # 通过 MDIALUP 查询拨号状态与 IP
-            dialed_up = False
+            # 通过 AT+MDIALUP? 查询拨号状态与 IP
+            # 返回格式：+MDIALUP: <cid>,<connect>[,<ipv4>,<v4_gw>,<v4_dns1>[,<v4_dns2>]]
+            connected_state = False
             ip = None
             try:
-                mdi = self._send("AT+MDIALUP=2")
+                mdi = self._send("AT+MDIALUP?")
                 for l in mdi:
-                    m = re.search(r"\+MDIALUP:\s*(\d+)", l)
-                    if m:
-                        state = int(m.group(1))
-                        if state == 1:
-                            dialed_up = True
-                        # 解析 IP（通常为第二个字段）
-                        mip = re.search(r'\+MDIALUP:\s*\d+,\s*"([\d.]+)"', l)
-                        if mip:
-                            ip = mip.group(1)
+                    if not l.startswith("+MDIALUP:"):
+                        continue
+                    body = l[len("+MDIALUP:"):].strip()
+                    parts = [p.strip() for p in body.split(",")]
+                    nums = [p for p in parts if re.fullmatch(r"\d+", p)]
+                    if len(nums) >= 2:
+                        # 第二个数字字段为 <connect>：1=已拨通
+                        if int(nums[1]) == 1:
+                            connected_state = True
+                            mip = re.search(r'"([\d.]+)"', l)  # 首个引号字段为 ipv4
+                            if mip:
+                                ip = mip.group(1)
                         break
             except Exception:
                 pass
 
-            # 兼容回退：部分固件 MDIALUP=2 无 IP 时再用 CGPADDR
+            # connect=1 表示已拨通（已获取 IP）；Ethernet 拨号可能只上报状态不上报 IP
+            dialed_up = connected_state and registered
+
+            # 兼容回退：已拨通但无 IP 时再用 CGPADDR 取 IP
             if dialed_up and not ip:
                 try:
                     cgpaddr = self._send("AT+CGPADDR=1")
@@ -361,14 +368,14 @@ class ML307ADevice:
                 self.status.update({"connected": False, "dialed_up": False, "error": str(e)})
 
     def dial(self, context=1, timeout=30):
-        """主动拨号（MDIALUP 命令激活指定 PDP 上下文的数据连接）。"""
-        self._send("AT+MDIALUP=1,%d" % context, timeout=timeout)
+        """主动拨号（MDIALUP 命令：AT+MDIALUP=<cid>,1 建立连接）。"""
+        self._send("AT+MDIALUP=%d,1" % context, timeout=timeout)
         self._update_status()
         return self.get_status()
 
     def hangup(self, context=1, timeout=15):
-        """断开指定 PDP 上下文的数据连接。"""
-        self._send("AT+MDIALUP=0,%d" % context, timeout=timeout)
+        """断开数据连接（AT+MDIALUP=<cid>,0 断开连接）。"""
+        self._send("AT+MDIALUP=%d,0" % context, timeout=timeout)
         self._update_status()
         return self.get_status()
 

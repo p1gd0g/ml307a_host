@@ -115,7 +115,7 @@ http://example.com/hook?text=...&token=abc
 
 - **SIM 就绪**：`AT+CPIN?` 返回 `READY`
 - **网络注册**：`AT+CGREG?` 或 `AT+CEREG?` 返回 `1` / `5`
-- **拨号成功**：`AT+MDIALUP=2` 返回连接状态为 `1`（已获取 IP）**且** 已网络注册
+- **拨号成功**：`AT+MDIALUP?` 返回连接状态为 `1`（已获取 IP）**且** 已网络注册
 - **信号强度**：`AT+CSQ` 转换为百分比
 
-如模块未自动拨号，可点击页面「重新拨号」（`AT+MDIALUP=1`）。
+如模块未自动拨号，可点击页面「重新拨号」（`AT+MDIALUP=1,1`）。
