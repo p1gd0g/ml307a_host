@@ -312,15 +312,36 @@ class ML307ADevice:
                 except Exception:
                     pass
 
-            cgpaddr = self._send("AT+CGPADDR=1")
+            # 通过 MDIALUP 查询拨号状态与 IP
+            dialed_up = False
             ip = None
-            for l in cgpaddr:
-                m = re.search(r'\+CGPADDR:\s*\d+,\s*"?([\d.]+)"?', l)
-                if m:
-                    ip = m.group(1)
-                    break
+            try:
+                mdi = self._send("AT+MDIALUP=2")
+                for l in mdi:
+                    m = re.search(r"\+MDIALUP:\s*(\d+)", l)
+                    if m:
+                        state = int(m.group(1))
+                        if state == 1:
+                            dialed_up = True
+                        # 解析 IP（通常为第二个字段）
+                        mip = re.search(r'\+MDIALUP:\s*\d+,\s*"([\d.]+)"', l)
+                        if mip:
+                            ip = mip.group(1)
+                        break
+            except Exception:
+                pass
 
-            dialed_up = bool(ip) and registered
+            # 兼容回退：部分固件 MDIALUP=2 无 IP 时再用 CGPADDR
+            if dialed_up and not ip:
+                try:
+                    cgpaddr = self._send("AT+CGPADDR=1")
+                    for l in cgpaddr:
+                        m = re.search(r'\+CGPADDR:\s*\d+,\s*"?([\d.]+)"?', l)
+                        if m:
+                            ip = m.group(1)
+                            break
+                except Exception:
+                    pass
             with self.lock:
                 self.status.update({
                     "connected": True,
@@ -339,9 +360,15 @@ class ML307ADevice:
             with self.lock:
                 self.status.update({"connected": False, "dialed_up": False, "error": str(e)})
 
-    def dial(self, context=1, timeout=15):
-        """主动激活 PDP 上下文（拨号）。"""
-        self._send("AT+CGACT=1,%d" % context, timeout=timeout)
+    def dial(self, context=1, timeout=30):
+        """主动拨号（MDIALUP 命令激活指定 PDP 上下文的数据连接）。"""
+        self._send("AT+MDIALUP=1,%d" % context, timeout=timeout)
+        self._update_status()
+        return self.get_status()
+
+    def hangup(self, context=1, timeout=15):
+        """断开指定 PDP 上下文的数据连接。"""
+        self._send("AT+MDIALUP=0,%d" % context, timeout=timeout)
         self._update_status()
         return self.get_status()
 
