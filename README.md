@@ -119,3 +119,14 @@ http://example.com/hook?text=...&token=abc
 - **信号强度**：`AT+CSQ` 转换为百分比
 
 如模块未自动拨号，可点击页面「重新拨号」（`AT+MDIALUP=1,1`）。
+
+## 查看日志
+
+### 实时跟踪日志
+sudo journalctl -u ml307a_host -f
+
+### 查看最近 100 行
+sudo journalctl -u ml307a_host -n 100
+
+### 按时间（今天）
+sudo journalctl -u ml307a_host --since today
