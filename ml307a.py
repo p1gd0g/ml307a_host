@@ -101,7 +101,7 @@ class ML307ADevice:
         raw = self.ser.readline()
         if not raw:
             return None
-        return raw.decode(errors="ignore").strip("\r\n")
+        return raw.decode("utf-8", errors="ignore").strip("\r\n")
 
     def _send(self, cmd, timeout=6):
         if not self.ser or not self.ser.is_open:
@@ -165,6 +165,7 @@ class ML307ADevice:
 
     def _handle_cmti(self, line):
         # +CMTI: "SM",3
+        logger.info("捕获短信上报 +CMTI: %s", line)
         m = re.search(r'"SM",\s*(\d+)', line)
         if m:
             self._pending_indices.append(int(m.group(1)))
@@ -207,10 +208,14 @@ class ML307ADevice:
         """ML307A 在部分编码下会以 UCS2(UTF-16BE) 十六进制串返回短信正文，
         这里尝试将其还原为可读文本（如 6D4B8BD5... -> 测试...）。"""
         s = (content or "").strip()
+        logger.info("短信原始内容(decode前): %r", s)
         if len(s) >= 4 and len(s) % 4 == 0 and re.fullmatch(r"[0-9A-Fa-f]+", s):
             try:
-                return bytes.fromhex(s).decode("utf-16-be")
-            except Exception:
+                decoded = bytes.fromhex(s).decode("utf-16-be")
+                logger.info("UCS2 解码后内容: %s", decoded)
+                return decoded
+            except Exception as e:
+                logger.warning("UCS2 解码失败，保留原始内容: %s", e)
                 return content
         return content
 
