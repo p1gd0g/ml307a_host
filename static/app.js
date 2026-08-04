@@ -60,9 +60,41 @@ function renderMessages(msgs) {
     const t = (m.received_at || "").replace("T", " ").slice(0, 19) || m.timestamp;
     tr.innerHTML =
       `<td>${t}</td><td>${escapeHtml(m.sender)}</td>` +
-      `<td class="msg-content">${escapeHtml(m.content)}</td>`;
+      `<td class="msg-content">${renderContent(m.content)}</td>`;
     body.appendChild(tr);
   }
+}
+
+function renderContent(content) {
+  // content 可能是字符串（旧格式）或结构化对象
+  if (typeof content === "string") return escapeHtml(content);
+  if (!content || typeof content !== "object") return escapeHtml(String(content));
+
+  if (content.type === "wap_push") {
+    const parts = [];
+    parts.push('<span class="tag-push">彩信 / WAP Push 通知</span>');
+    if (content.url) {
+      parts.push(`<div>链接：<a href="${escapeAttr(content.url)}" target="_blank" rel="noopener">${escapeHtml(content.url)}</a></div>`);
+    }
+    if (content.sender_hint) {
+      parts.push(`<div>发件人：${escapeHtml(content.sender_hint)}</div>`);
+    }
+    if (content.raw) {
+      const id = "raw-" + Math.random().toString(36).slice(2);
+      parts.push(
+        `<details class="raw-box"><summary>原始数据</summary>` +
+        `<pre>${escapeHtml(content.raw)}</pre></details>`
+      );
+    }
+    return parts.join("");
+  }
+
+  // 普通文本
+  return escapeHtml(content.text != null ? content.text : "");
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/'/g, "&#39;");
 }
 
 function escapeHtml(s) {

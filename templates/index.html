@@ -55,6 +55,18 @@
     th { color: var(--muted); font-weight: 600; }
     .empty { color: var(--muted); text-align: center; padding: 24px 0; }
     .msg-content { white-space: pre-wrap; word-break: break-all; max-width: 420px; }
+    .tag-push {
+      display: inline-block; background: rgba(255,170,0,.15); color: #ffb43d;
+      border: 1px solid rgba(255,170,0,.4); border-radius: 6px;
+      padding: 1px 8px; font-size: 12px; margin-bottom: 6px;
+    }
+    .raw-box { margin-top: 6px; }
+    .raw-box summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    .raw-box pre {
+      margin: 6px 0 0; padding: 8px; background: var(--panel2);
+      border-radius: 8px; font-size: 11px; line-height: 1.5; word-break: break-all;
+      white-space: pre-wrap; max-height: 160px; overflow: auto;
+    }
     .conn-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
     .dot-on { background: var(--ok); } .dot-off { background: var(--bad); }
     .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }

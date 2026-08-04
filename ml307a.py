@@ -205,19 +205,44 @@ class ML307ADevice:
 
     # ---------- 解码 ----------
     def _decode_content(self, content):
-        """ML307A 在部分编码下会以 UCS2(UTF-16BE) 十六进制串返回短信正文，
-        这里尝试将其还原为可读文本（如 6D4B8BD5... -> 测试...）。"""
+        """将短信正文解析为结构化 dict：
+        - 普通文本（已按 UTF-8 解出）或 UCS2(UTF-16BE) 十六进制 -> {type:"text", text:...}
+        - WAP Push / MMS 通知（二进制 WBXML）-> {type:"wap_push", url, sender_hint, raw}
+        """
+        import re as _re
         s = (content or "").strip()
         logger.info("短信原始内容(decode前): %r", s)
-        if len(s) >= 4 and len(s) % 4 == 0 and re.fullmatch(r"[0-9A-Fa-f]+", s):
+
+        # 1) WAP Push / MMS 通知：二进制 WBXML，非文本
+        up = s.upper()
+        if up.startswith("0605040B8423F0") or up.startswith("0B8423F0"):
+            url = None
+            sender_hint = None
+            try:
+                b = bytes.fromhex(s)
+                for m in _re.finditer(rb"[ -~]{3,}", b):
+                    seg = m.group().decode()
+                    if seg.startswith("http"):
+                        url = seg
+                    elif "@" in seg and not seg.startswith("#"):
+                        sender_hint = seg
+                logger.info("识别为 WAP Push(MMS) 短信，URL=%s sender=%s", url, sender_hint)
+            except Exception:
+                pass
+            return {"type": "wap_push", "url": url, "sender_hint": sender_hint, "raw": s}
+
+        # 2) 纯 UCS2(UTF-16BE) 十六进制 -> 中文文本
+        if len(s) >= 4 and len(s) % 4 == 0 and _re.fullmatch(r"[0-9A-Fa-f]+", s):
             try:
                 decoded = bytes.fromhex(s).decode("utf-16-be")
                 logger.info("UCS2 解码后内容: %s", decoded)
-                return decoded
+                return {"type": "text", "text": decoded}
             except Exception as e:
                 logger.warning("UCS2 解码失败，保留原始内容: %s", e)
-                return content
-        return content
+                return {"type": "text", "text": content}
+
+        # 3) 普通文本（已按 UTF-8 解出）
+        return {"type": "text", "text": content}
 
     def _store_message(self, sender, content, ts):
         content = self._decode_content(content)
@@ -232,7 +257,12 @@ class ML307ADevice:
             self.messages.insert(0, msg)
             if len(self.messages) > 200:
                 self.messages = self.messages[:200]
-        logger.info("收到短信 from=%s content=%s", sender, content)
+        # 日志中只打可读文本，避免把二进制 hex 刷屏
+        if isinstance(content, dict) and content.get("type") == "wap_push":
+            logger.info("收到短信 from=%s [WAP Push] url=%s", sender, content.get("url"))
+        else:
+            text = content.get("text", "") if isinstance(content, dict) else content
+            logger.info("收到短信 from=%s content=%s", sender, text)
         self._trigger_webhook(msg)
         if self.on_message:
             try:
@@ -243,10 +273,23 @@ class ML307ADevice:
     # ---------- Webhook ----------
     def _build_text(self, msg):
         """将所有短信信息合并为一个 JSON 字符串参数。"""
+        content = msg.get("content", "")
+        if isinstance(content, dict):
+            if content.get("type") == "wap_push":
+                content_out = {
+                    "type": "wap_push",
+                    "url": content.get("url"),
+                    "sender_hint": content.get("sender_hint"),
+                    "raw": content.get("raw"),
+                }
+            else:
+                content_out = content.get("text", "")
+        else:
+            content_out = content
         return json.dumps({
             "sender": msg.get("sender", ""),
             "time": msg.get("timestamp", ""),
-            "content": msg.get("content", ""),
+            "content": content_out,
         }, ensure_ascii=False)
 
     def _build_params(self, msg):
