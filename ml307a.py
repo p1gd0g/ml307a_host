@@ -35,6 +35,11 @@ class ML307ADevice:
         self.webhook_params = {}  # 自定义 webhook 参数（dict）
         self.on_message = None  # 业务层回调：收到短信时调用(msg)
 
+        # 多段（级联）短信重组缓冲
+        self.multipart_timeout = 2.0   # 最后一段到达后多久触发重组（秒）
+        self._mpart = {}               # key -> {"_meta":(sender,ts), "parts":{seq:text}}
+        self._mpart_timers = {}        # key -> threading.Timer
+
         self.status = {
             "connected": False,
             "sim_ready": False,
@@ -204,14 +209,82 @@ class ML307ADevice:
             pass
 
     # ---------- 解码 ----------
+    def _try_parse_pdu(self, s):
+        """尝试按「带 UDH 的 PDU 用户数据」解析。
+
+        成功返回 (info, payload_hex)，否则返回 None。
+        info 含 dest_port / src_port / concat_ref / concat_max / concat_seq。
+        """
+        if len(s) < 6 or len(s) % 2 != 0:
+            return None
+        if not re.fullmatch(r"[0-9A-Fa-f]+", s):
+            return None
+        try:
+            b = bytes.fromhex(s)
+        except Exception:
+            return None
+        udh_len = b[0]
+        # UDH 长度通常很小；过大则不像 UDH，避免误判
+        if udh_len == 0 or udh_len > 40 or udh_len + 1 > len(b):
+            return None
+        udh = b[1:1 + udh_len]
+        info = {"dest_port": None, "src_port": None,
+                "concat_ref": None, "concat_max": None, "concat_seq": None}
+        valid = False
+        i = 0
+        while i + 2 <= len(udh):
+            iei = udh[i]
+            iedl = udh[i + 1]
+            i += 2
+            if iedl > len(udh) - i:
+                break
+            data = udh[i:i + iedl]
+            i += iedl
+            if iei == 0x00 and iedl >= 3:        # 级联短信（8bit 参考号）
+                info["concat_ref"] = data[0]
+                info["concat_max"] = data[1]
+                info["concat_seq"] = data[2]
+                valid = True
+            elif iei == 0x08 and iedl >= 4:      # 应用端口寻址（16bit）
+                info["dest_port"] = int.from_bytes(data[0:2], "big")
+                info["src_port"] = int.from_bytes(data[2:4], "big")
+                valid = True
+        if not valid:
+            return None
+        payload = b[1 + udh_len:]
+        if not payload:
+            return None
+        return info, payload.hex().upper()
+
     def _decode_content(self, content):
         """将短信正文解析为结构化 dict：
+        - 带 UDH 的 PDU（端口寻址 / 级联）-> 剥离 UDH 后按 UCS2 解码
         - 普通文本（已按 UTF-8 解出）或 UCS2(UTF-16BE) 十六进制 -> {type:"text", text:...}
         - WAP Push / MMS 通知（二进制 WBXML）-> {type:"wap_push", url, sender_hint, raw}
+        多段（级联）短信会带 multipart 信息，交由 _store_message 重组。
         """
-        import re as _re
         s = (content or "").strip()
         logger.info("短信原始内容(decode前): %r", s)
+
+        # 0) 带 UDH 的 PDU（用户数据）：剥离 UDH 后按 UCS2 解码
+        pdu = self._try_parse_pdu(s)
+        if pdu is not None:
+            info, payload_hex = pdu
+            try:
+                decoded = bytes.fromhex(payload_hex).decode("utf-16-be")
+            except Exception:
+                decoded = None
+            if decoded:
+                multipart = None
+                if info["concat_ref"] is not None:
+                    multipart = {"kind": "concat", "ref": info["concat_ref"],
+                                 "seq": info["concat_seq"], "max": info["concat_max"]}
+                elif info["dest_port"] is not None:
+                    multipart = {"kind": "port", "dest_port": info["dest_port"],
+                                 "seq": (info["src_port"] or 0) & 0xFF}
+                logger.info("识别为带 UDH 的 PDU 短信，dest_port=%s src_port=%s 多段=%s",
+                            info["dest_port"], info["src_port"], multipart is not None)
+                return {"type": "text", "text": decoded, "multipart": multipart}
 
         # 1) WAP Push / MMS 通知：二进制 WBXML，非文本
         up = s.upper()
@@ -220,7 +293,7 @@ class ML307ADevice:
             sender_hint = None
             try:
                 b = bytes.fromhex(s)
-                for m in _re.finditer(rb"[ -~]{3,}", b):
+                for m in re.finditer(rb"[ -~]{3,}", b):
                     seg = m.group().decode()
                     if seg.startswith("http"):
                         url = seg
@@ -229,23 +302,68 @@ class ML307ADevice:
                 logger.info("识别为 WAP Push(MMS) 短信，URL=%s sender=%s", url, sender_hint)
             except Exception:
                 pass
-            return {"type": "wap_push", "url": url, "sender_hint": sender_hint, "raw": s}
+            return {"type": "wap_push", "url": url, "sender_hint": sender_hint, "raw": s, "multipart": None}
 
         # 2) 纯 UCS2(UTF-16BE) 十六进制 -> 中文文本
-        if len(s) >= 4 and len(s) % 4 == 0 and _re.fullmatch(r"[0-9A-Fa-f]+", s):
+        if len(s) >= 4 and len(s) % 4 == 0 and re.fullmatch(r"[0-9A-Fa-f]+", s):
             try:
                 decoded = bytes.fromhex(s).decode("utf-16-be")
                 logger.info("UCS2 解码后内容: %s", decoded)
-                return {"type": "text", "text": decoded}
+                return {"type": "text", "text": decoded, "multipart": None}
             except Exception as e:
                 logger.warning("UCS2 解码失败，保留原始内容: %s", e)
-                return {"type": "text", "text": content}
+                return {"type": "text", "text": content, "multipart": None}
 
         # 3) 普通文本（已按 UTF-8 解出）
-        return {"type": "text", "text": content}
+        return {"type": "text", "text": content, "multipart": None}
 
     def _store_message(self, sender, content, ts):
-        content = self._decode_content(content)
+        parsed = self._decode_content(content)
+        mp = parsed.get("multipart")
+        if mp is not None:
+            self._buffer_multipart(sender, ts, parsed, mp)
+            return
+        self._commit_message(sender, parsed, ts)
+
+    def _buffer_multipart(self, sender, ts, parsed, mp):
+        """缓存多段短信的一段，收齐或超时后重组为一条完整短信。"""
+        if mp["kind"] == "concat":
+            key = "c:%s:%d" % (sender, mp["ref"])
+        else:
+            key = "p:%s:%d" % (sender, mp["dest_port"])
+        buf = self._mpart.setdefault(key, {"_meta": (sender, ts), "parts": {}})
+        buf["_meta"] = (sender, ts)
+        buf["parts"][mp["seq"]] = parsed["text"]
+
+        # 标准级联短信：已知总段数且已收齐 -> 立即重组
+        if mp["kind"] == "concat" and mp.get("max"):
+            if len(buf["parts"]) >= mp["max"]:
+                self._flush_multipart(key)
+                return
+
+        # 端口寻址等未知总段数的情况：用定时器兜底，最后一段到达后稍候重组
+        timer = self._mpart_timers.get(key)
+        if timer:
+            timer.cancel()
+        self._mpart_timers[key] = threading.Timer(
+            self.multipart_timeout, self._flush_multipart, args=(key,))
+        self._mpart_timers[key].start()
+
+    def _flush_multipart(self, key):
+        buf = self._mpart.pop(key, None)
+        timer = self._mpart_timers.pop(key, None)
+        if timer:
+            timer.cancel()
+        if not buf:
+            return
+        sender, ts = buf.get("_meta", ("", ""))
+        parts = buf.get("parts", {})
+        seqs = sorted(k for k in parts.keys() if isinstance(k, int))
+        combined = "".join(parts[s] for s in seqs)
+        logger.info("多段短信重组完成，共 %d 段 -> %s", len(seqs), combined[:60])
+        self._commit_message(sender, {"type": "text", "text": combined, "multipart": None}, ts)
+
+    def _commit_message(self, sender, content, ts):
         msg = {
             "id": int(time.time() * 1000),
             "sender": sender,
